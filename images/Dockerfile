@@ -1,12 +1,12 @@
 # Source: https://github.com/dotnet/dotnet-docker
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-jammy AS build
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble AS build
 
 ARG TARGETOS
 ARG TARGETARCH
 ARG RUNNER_VERSION
 ARG RUNNER_CONTAINER_HOOKS_VERSION=0.7.0
-ARG DOCKER_VERSION=29.0.1
-ARG BUILDX_VERSION=0.30.0
+ARG DOCKER_VERSION=29.2.0
+ARG BUILDX_VERSION=0.31.1
 
 RUN apt update -y && apt install curl unzip -y
 
@@ -21,7 +21,7 @@ RUN curl -f -L -o runner-container-hooks.zip https://github.com/actions/runner-c
     && unzip ./runner-container-hooks.zip -d ./k8s \
     && rm runner-container-hooks.zip
 
-RUN curl -f -L -o runner-container-hooks.zip https://github.com/actions/runner-container-hooks/releases/download/v0.8.0/actions-runner-hooks-k8s-0.8.0.zip \
+RUN curl -f -L -o runner-container-hooks.zip https://github.com/actions/runner-container-hooks/releases/download/v0.8.1/actions-runner-hooks-k8s-0.8.1.zip \
     && unzip ./runner-container-hooks.zip -d ./k8s-novolume \
     && rm runner-container-hooks.zip
 
@@ -33,15 +33,15 @@ RUN export RUNNER_ARCH=${TARGETARCH} \
     && rm -rf docker.tgz \
     && mkdir -p /usr/local/lib/docker/cli-plugins \
     && curl -fLo /usr/local/lib/docker/cli-plugins/docker-buildx \
-        "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-${TARGETARCH}" \
+    "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-${TARGETARCH}" \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-jammy
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUNNER_MANUALLY_TRAP_SIG=1
 ENV ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1
-ENV ImageOS=ubuntu22
+ENV ImageOS=ubuntu24
 
 # 'gpg-agent' and 'software-properties-common' are needed for the 'add-apt-repository' command that follows
 RUN apt update -y \
@@ -54,8 +54,6 @@ RUN add-apt-repository ppa:git-core/ppa \
     && apt install -y git \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /home/runner
-
 RUN adduser --disabled-password --gecos "" --uid 1001 runner \
     && groupadd docker --gid 123 \
     && usermod -aG sudo runner \
@@ -63,6 +61,8 @@ RUN adduser --disabled-password --gecos "" --uid 1001 runner \
     && echo "%sudo   ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers \
     && echo "Defaults env_keep += \"DEBIAN_FRONTEND\"" >> /etc/sudoers \
     && chmod 777 /home/runner
+
+WORKDIR /home/runner
 
 COPY --chown=runner:docker --from=build /actions-runner .
 COPY --from=build /usr/local/lib/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
