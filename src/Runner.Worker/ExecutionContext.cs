@@ -77,14 +77,22 @@ namespace GitHub.Runner.Worker
 
         List<string> StepEnvironmentOverrides { get; }
 
-        ExecutionContext Root { get; }
-        ExecutionContext Parent { get; }
+        bool IsBackground { get; }
+
+        IExecutionContext Root { get; }
 
         // Initialize
         void InitializeJob(Pipelines.AgentJobRequestMessage message, CancellationToken token);
         void CancelToken();
-        IExecutionContext CreateChild(Guid recordId, string displayName, string refName, string scopeName, string contextName, ActionRunStage stage, Dictionary<string, string> intraActionState = null, int? recordOrder = null, IPagingLogger logger = null, bool isEmbedded = false, List<Issue> embeddedIssueCollector = null, CancellationTokenSource cancellationTokenSource = null, Guid embeddedId = default(Guid), string siblingScopeName = null, TimeSpan? timeout = null);
+        IExecutionContext CreateChild(Guid recordId, string displayName, string refName, string scopeName, string contextName, ActionRunStage stage, Dictionary<string, string> intraActionState = null, int? recordOrder = null, IPagingLogger logger = null, bool isEmbedded = false, List<Issue> embeddedIssueCollector = null, CancellationTokenSource cancellationTokenSource = null, Guid embeddedId = default(Guid), string siblingScopeName = null, TimeSpan? timeout = null, bool isBackground = false, string backgroundControlType = null, string[] backgroundControlStepIds = null, string parallelGroupId = null);
         IExecutionContext CreateEmbeddedChild(string scopeName, string contextName, Guid embeddedId, ActionRunStage stage, Dictionary<string, string> intraActionState = null, string siblingScopeName = null);
+
+
+        // Background step deferral properties
+        Dictionary<string, string> DeferredOutputs { get; set; }
+        Dictionary<string, string> DeferredEnvironmentVariables { get; set; }
+        List<string> DeferredPrependPath { get; set; }
+        bool DeferOutcomeConclusion { get; set; }
 
         // logging
         long Write(string tag, string message);
@@ -101,6 +109,12 @@ namespace GitHub.Runner.Worker
         void SetGitHubContext(string name, string value);
         void SetOutput(string name, string value, out string reference);
         void SetTimeout(TimeSpan? timeout);
+
+        // Background step deferral flush methods
+        void FlushDeferredOutputs();
+        void FlushDeferredEnvironment();
+        void FlushDeferredOutcomeConclusion();
+
         void AddIssue(Issue issue, ExecutionContextLogOptions logOptions);
         void Progress(int percentage, string currentOperation = null);
         void UpdateDetailTimelineRecord(TimelineRecord record);
@@ -217,6 +231,9 @@ namespace GitHub.Runner.Worker
 
         public bool EchoOnActionCommand { get; set; }
 
+        // Whether this step runs in the background
+        public bool IsBackground => _record.IsBackground;
+
         // An embedded execution context shares the same record ID, record name, and logger
         // as its enclosing execution context.
         public bool IsEmbedded { get; private init; }
@@ -251,7 +268,9 @@ namespace GitHub.Runner.Worker
             }
         }
 
-        public ExecutionContext Root
+        IExecutionContext IExecutionContext.Root => Root;
+
+        private ExecutionContext Root
         {
             get
             {
@@ -266,13 +285,7 @@ namespace GitHub.Runner.Worker
             }
         }
 
-        public ExecutionContext Parent
-        {
-            get
-            {
-                return _parentExecutionContext;
-            }
-        }
+
 
         public JobContext JobContext
         {
@@ -283,6 +296,12 @@ namespace GitHub.Runner.Worker
         }
 
         public List<string> StepEnvironmentOverrides { get; } = new List<string>();
+
+        // Background step deferral properties
+        public Dictionary<string, string> DeferredOutputs { get; set; }
+        public Dictionary<string, string> DeferredEnvironmentVariables { get; set; }
+        public List<string> DeferredPrependPath { get; set; }
+        public bool DeferOutcomeConclusion { get; set; }
 
         public override void Initialize(IHostContext hostContext)
         {
@@ -342,7 +361,25 @@ namespace GitHub.Runner.Worker
             }
 
             step.ExecutionContext = Root.CreatePostChild(step.DisplayName, IntraActionState, siblingScopeName);
+            if (step is JobExtensionRunner)
+            {
+                step.ExecutionContext.StepTelemetry.Type = "runner";
+                step.ExecutionContext.StepTelemetry.Action = step.DisplayName.ToLowerInvariant().Replace(' ', '_');
+            }
             Root.PostJobSteps.Push(step);
+
+            if (Root.Global.Debugger?.Enabled == true)
+            {
+                try
+                {
+                    HostContext.GetService<Dap.IDapDebugger>().OnPostStepRegistered(step);
+                }
+                catch (Exception ex)
+                {
+                    Trace.Warning("Failed to notify DAP debugger about registered post job step.");
+                    Trace.Error(ex);
+                }
+            }
         }
 
         public IExecutionContext CreateChild(
@@ -360,7 +397,11 @@ namespace GitHub.Runner.Worker
             CancellationTokenSource cancellationTokenSource = null,
             Guid embeddedId = default(Guid),
             string siblingScopeName = null,
-            TimeSpan? timeout = null)
+            TimeSpan? timeout = null,
+            bool isBackground = false,
+            string backgroundControlType = null,
+            string[] backgroundControlStepIds = null,
+            string parallelGroupId = null)
         {
             Trace.Entering();
 
@@ -400,6 +441,24 @@ namespace GitHub.Runner.Worker
             }
 
             child.EchoOnActionCommand = EchoOnActionCommand;
+
+            // Set background step metadata before InitializeTimelineRecord so it's included in the first update
+            if (isBackground || backgroundControlType != null || parallelGroupId != null)
+            {
+                child._record.IsBackground = isBackground;
+                child._record.BackgroundControlType = backgroundControlType;
+                child._record.BackgroundControlStepIds = backgroundControlStepIds;
+                child._record.ParallelGroupId = parallelGroupId;
+
+                // Initialize deferred state for background steps — flushed at wait/wait-all
+                if (isBackground)
+                {
+                    child.DeferredOutputs = new Dictionary<string, string>();
+                    child.DeferredEnvironmentVariables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    child.DeferredPrependPath = new List<string>();
+                    child.DeferOutcomeConclusion = true;
+                }
+            }
 
             if (recordOrder != null)
             {
@@ -513,7 +572,11 @@ namespace GitHub.Runner.Worker
                     Type = StepTelemetry?.Type,
                     StartedAt = _record.StartTime,
                     CompletedAt = _record.FinishTime,
-                    Annotations = new List<Annotation>()
+                    Annotations = new List<Annotation>(),
+                    // Populate background step metadata from timeline record fields
+                    IsBackground = _record.IsBackground,
+                    BackgroundControlType = _record.BackgroundControlType,
+                    BackgroundControlStepIds = _record.BackgroundControlStepIds
                 };
 
                 _record.Issues?.ForEach(issue =>
@@ -559,9 +622,20 @@ namespace GitHub.Runner.Worker
 
             _logger.End();
 
-            UpdateGlobalStepsContext();
+            if (!DeferOutcomeConclusion)
+            {
+                UpdateGlobalStepsContext();
+            }
 
             return Result.Value;
+        }
+
+        public void FlushDeferredOutcomeConclusion()
+        {
+            if (DeferOutcomeConclusion)
+            {
+                UpdateGlobalStepsContext();
+            }
         }
 
         public void UpdateGlobalStepsContext()
@@ -637,6 +711,40 @@ namespace GitHub.Runner.Worker
             // todo: restrict multiline?
 
             Global.StepsContext.SetOutput(ScopeName, ContextName, name, value, out reference);
+        }
+
+        public void FlushDeferredOutputs()
+        {
+            if (DeferredOutputs == null || DeferredOutputs.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var kvp in DeferredOutputs)
+            {
+                Global.StepsContext.SetOutput(ScopeName, ContextName, kvp.Key, kvp.Value, out _);
+            }
+        }
+
+        public void FlushDeferredEnvironment()
+        {
+            if (DeferredEnvironmentVariables != null)
+            {
+                foreach (var kvp in DeferredEnvironmentVariables)
+                {
+                    Global.EnvironmentVariables[kvp.Key] = kvp.Value;
+                    SetEnvContext(kvp.Key, kvp.Value);
+                }
+            }
+
+            if (DeferredPrependPath != null)
+            {
+                foreach (var path in DeferredPrependPath)
+                {
+                    Global.PrependPath.RemoveAll(x => string.Equals(x, path, StringComparison.CurrentCulture));
+                    Global.PrependPath.Add(path);
+                }
+            }
         }
 
         public void SetTimeout(TimeSpan? timeout)
@@ -859,6 +967,12 @@ namespace GitHub.Runner.Worker
             // Track Node.js 20 actions for deprecation warning
             Global.DeprecatedNode20Actions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Track actions upgraded from Node.js 20 to Node.js 24
+            Global.UpgradedToNode24Actions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Track actions stuck on Node.js 20 due to ARM32 (separate from general deprecation)
+            Global.Arm32Node20Actions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             // Job Outputs
             JobOutputs = new Dictionary<string, VariableValue>(StringComparer.OrdinalIgnoreCase);
 
@@ -873,6 +987,9 @@ namespace GitHub.Runner.Worker
 
             // File table
             Global.FileTable = new List<String>(message.FileTable ?? new string[0]);
+
+            // Workflow dependencies (lockfile pins)
+            Global.ActionsDependencies = message.ActionsDependencies;
 
             // What type of job request is running (i.e. Run Service vs. pipelines)
             Global.Variables.Set(Constants.Variables.System.JobRequestType, message.MessageType);
@@ -891,15 +1008,12 @@ namespace GitHub.Runner.Worker
 
             Trace.Info("Initializing Job context");
             var jobContext = new JobContext();
-            if (Global.Variables.GetBoolean(Constants.Runner.Features.AddCheckRunIdToJobContext) ?? false)
+            ExpressionValues.TryGetValue("job", out var jobDictionary);
+            if (jobDictionary != null)
             {
-                ExpressionValues.TryGetValue("job", out var jobDictionary);
-                if (jobDictionary != null)
+                foreach (var pair in jobDictionary.AssertDictionary("job"))
                 {
-                    foreach (var pair in jobDictionary.AssertDictionary("job"))
-                    {
-                        jobContext[pair.Key] = pair.Value;
-                    }
+                    jobContext[pair.Key] = pair.Value;
                 }
             }
             ExpressionValues["job"] = jobContext;
@@ -967,6 +1081,10 @@ namespace GitHub.Runner.Worker
 
             // Verbosity (from GitHub.Step_Debug).
             Global.WriteDebug = Global.Variables.Step_Debug ?? false;
+
+            // Debugger enabled flag (from acquire response).
+            var overrideDebuggerWelcomeMessage = Global.Variables.GetBoolean(Constants.Runner.Features.OverrideDebuggerWelcomeMessage) ?? false;
+            Global.Debugger = new Dap.DebuggerConfig(message.EnableDebugger, message.DebuggerTunnel, overrideDebuggerWelcomeMessage, message.DebuggerWelcomeMessage);
 
             // Hook up JobServerQueueThrottling event, we will log warning on server tarpit.
             _jobServerQueue.JobServerQueueThrottling += JobServerQueueThrottling_EventReceived;
@@ -1325,12 +1443,15 @@ namespace GitHub.Runner.Worker
                 Trace.Info($"Updated step result (continue on error)");
             }
 
-            UpdateGlobalStepsContext();
+            if (!DeferOutcomeConclusion)
+            {
+                UpdateGlobalStepsContext();
+            }
         }
 
-        internal IPipelineTemplateEvaluator ToPipelineTemplateEvaluatorInternal(ObjectTemplating.ITraceWriter traceWriter = null)
+        internal IPipelineTemplateEvaluator ToPipelineTemplateEvaluatorInternal(bool allowServiceContainerCommand, ObjectTemplating.ITraceWriter traceWriter = null)
         {
-            return new PipelineTemplateEvaluatorWrapper(HostContext, this, traceWriter);
+            return new PipelineTemplateEvaluatorWrapper(HostContext, this, allowServiceContainerCommand, traceWriter);
         }
 
         private static void NoOp()
@@ -1418,10 +1539,13 @@ namespace GitHub.Runner.Worker
 
         public static IPipelineTemplateEvaluator ToPipelineTemplateEvaluator(this IExecutionContext context, ObjectTemplating.ITraceWriter traceWriter = null)
         {
+            var allowServiceContainerCommand = (context.Global.Variables.GetBoolean(Constants.Runner.Features.ServiceContainerCommand) ?? false)
+                || StringUtil.ConvertToBoolean(Environment.GetEnvironmentVariable("ACTIONS_SERVICE_CONTAINER_COMMAND"));
+
             // Create wrapper?
             if ((context.Global.Variables.GetBoolean(Constants.Runner.Features.CompareWorkflowParser) ?? false) || StringUtil.ConvertToBoolean(Environment.GetEnvironmentVariable("ACTIONS_RUNNER_COMPARE_WORKFLOW_PARSER")))
             {
-                return (context as ExecutionContext).ToPipelineTemplateEvaluatorInternal(traceWriter);
+                return (context as ExecutionContext).ToPipelineTemplateEvaluatorInternal(allowServiceContainerCommand, traceWriter);
             }
 
             // Legacy
@@ -1433,6 +1557,7 @@ namespace GitHub.Runner.Worker
             return new PipelineTemplateEvaluator(traceWriter, schema, context.Global.FileTable)
             {
                 MaxErrorMessageLength = int.MaxValue, // Don't truncate error messages otherwise we might not scrub secrets correctly
+                AllowServiceContainerCommand = allowServiceContainerCommand,
             };
         }
 

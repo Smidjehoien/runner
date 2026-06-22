@@ -1,35 +1,40 @@
 ## What's Changed
-* chore: update Node versions by @github-actions[bot] in https://github.com/actions/runner/pull/4200
-* Update dotnet sdk to latest version @8.0.417 by @github-actions[bot] in https://github.com/actions/runner/pull/4201
-* Bump System.Formats.Asn1 and System.Security.Cryptography.Pkcs by @dependabot[bot] in https://github.com/actions/runner/pull/4202
-* Allow empty container options by @ericsciple in https://github.com/actions/runner/pull/4208
-* Update Docker to v29.1.5 and Buildx to v0.31.0 by @github-actions[bot] in https://github.com/actions/runner/pull/4212
-* Report job level annotations by @TingluoHuang in https://github.com/actions/runner/pull/4216
-* Fix local action display name showing `Run /./` instead of `Run ./` by @ericsciple in https://github.com/actions/runner/pull/4218
-* Update Docker to v29.2.0 and Buildx to v0.31.1 by @github-actions[bot] in https://github.com/actions/runner/pull/4219
-* Add support for libssl3 and libssl3t64 for newer Debian/Ubuntu versions by @nekketsuuu in https://github.com/actions/runner/pull/4213
-* Validate work dir during runner start up. by @TingluoHuang in https://github.com/actions/runner/pull/4227
-* Bump hook to 0.8.1 by @nikola-jokic in https://github.com/actions/runner/pull/4222
-* Support return job result as exitcode in hosted runner. by @TingluoHuang in https://github.com/actions/runner/pull/4233
-* Add telemetry tracking for deprecated set-output and save-state commands by @ericsciple in https://github.com/actions/runner/pull/4221
-* Fix parser comparison mismatches by @ericsciple in https://github.com/actions/runner/pull/4220
-* Remove unnecessary connection test during some registration flows by @zarenner in https://github.com/actions/runner/pull/4244
-* chore: update Node versions by @github-actions[bot] in https://github.com/actions/runner/pull/4249
-* Update dotnet sdk to latest version @8.0.418 by @github-actions[bot] in https://github.com/actions/runner/pull/4250
-* Fix link to SECURITY.md in README by @TingluoHuang in https://github.com/actions/runner/pull/4253
-* Try to infer runner is on hosted/ghes when githuburl is empty. by @TingluoHuang in https://github.com/actions/runner/pull/4254
-* Add Node.js 20 deprecation warning annotation (Phase 1) by @salmanmkc in https://github.com/actions/runner/pull/4242
-* Update Node.js 20 deprecation date to June 2nd, 2026 by @salmanmkc in https://github.com/actions/runner/pull/4258
-* Composite Action Step Markers by @ericsciple in https://github.com/actions/runner/pull/4243
-* Symlink actions cache by @paveliak in https://github.com/actions/runner/pull/4260
-* Bump minimatch in /src/Misc/expressionFunc/hashFiles by @dependabot[bot] in https://github.com/actions/runner/pull/4261
-* Bump @stylistic/eslint-plugin from 3.1.0 to 5.9.0 in /src/Misc/expressionFunc/hashFiles by @dependabot[bot] in https://github.com/actions/runner/pull/4257
+* Bump System.ServiceProcess.ServiceController from 10.0.6 to 10.0.7 by @dependabot[bot] in https://github.com/actions/runner/pull/4370
+* Bump @actions/glob from 0.6.1 to 0.7.0 in /src/Misc/expressionFunc/hashFiles by @dependabot[bot] in https://github.com/actions/runner/pull/4367
+* feat: propagate actions dependencies by @nodeselector in https://github.com/actions/runner/pull/4372
+* Not retry and report action download 403. by @TingluoHuang in https://github.com/actions/runner/pull/4391
+* Update setup job starting logs by @GitPaulo in https://github.com/actions/runner/pull/4383
+* fix: expand commit hash regex to support SHA-256 (64-char) hashes by @yaananth in https://github.com/actions/runner/pull/4347
+* Move dap setup to setup job step by @rentziass in https://github.com/actions/runner/pull/4403
+* Add support for Ubuntu 26.04 (liblttng-ust1t64, libicu77-80) by @dvaldivia in https://github.com/actions/runner/pull/4394
+* Update dotnet sdk to latest version @8.0.421 by @github-actions[bot] in https://github.com/actions/runner/pull/4428
+* Update Docker to v29.5.0 and Buildx to v0.34.0 by @github-actions[bot] in https://github.com/actions/runner/pull/4425
+* Execute debugger REPL commands inside job container by @rentziass in https://github.com/actions/runner/pull/4420
+* Send welcome message in debugger console on connect by @rentziass in https://github.com/actions/runner/pull/4419
+* Update snapshot-if context and functions by @drielenr in https://github.com/actions/runner/pull/4443
+* chore: update Node versions by @github-actions[bot] in https://github.com/actions/runner/pull/4452
+* Allow disable node v8 maglev jit compiler on node24. by @TingluoHuang in https://github.com/actions/runner/pull/4447
+* Update Node 24 default date to June 16th, 2026 by @salmanmkc in https://github.com/actions/runner/pull/4462
+* Populate telemetry for non-action post-job steps by @drielenr in https://github.com/actions/runner/pull/4463
+* Add SDK types and results plumbing for background step control by @lokesh755 in https://github.com/actions/runner/pull/4472
+* Add job execution view model by @rentziass in https://github.com/actions/runner/pull/4470
+* Add thread-safety locks to StepsContext by @lokesh755 in https://github.com/actions/runner/pull/4475
+* Add background step deferral infrastructure and metadata plumbing by @lokesh755 in https://github.com/actions/runner/pull/4479
+* Wire job execution view into DAP by @rentziass in https://github.com/actions/runner/pull/4471
+* Background steps execution engine by @lokesh755 in https://github.com/actions/runner/pull/4476
+* Update Docker to v29.5.2 and Buildx to v0.34.1 by @github-actions[bot] in https://github.com/actions/runner/pull/4451
+* BrokerServer should not retry on 401. by @TingluoHuang in https://github.com/actions/runner/pull/4445
+* Add new env var to allow single-prefix multiline logs on stdout by @nuclearpidgeon in https://github.com/actions/runner/pull/4424
+* Bump Microsoft.DevTunnels.Connections from 1.3.39 to 1.3.48 by @dependabot[bot] in https://github.com/actions/runner/pull/4441
+* Bump System.Formats.Asn1 and System.Security.Cryptography.Pkcs by @dependabot[bot] in https://github.com/actions/runner/pull/4369
 
 ## New Contributors
-* @nekketsuuu made their first contribution in https://github.com/actions/runner/pull/4213
-* @zarenner made their first contribution in https://github.com/actions/runner/pull/4244
+* @GitPaulo made their first contribution in https://github.com/actions/runner/pull/4383
+* @dvaldivia made their first contribution in https://github.com/actions/runner/pull/4394
+* @drielenr made their first contribution in https://github.com/actions/runner/pull/4443
+* @nuclearpidgeon made their first contribution in https://github.com/actions/runner/pull/4424
 
-**Full Changelog**: https://github.com/actions/runner/compare/v2.331.0...v2.332.0
+**Full Changelog**: https://github.com/actions/runner/compare/v2.334.0...v2.335.0
 
 _Note: Actions Runner follows a progressive release policy, so the latest release might not be available to your enterprise, organization, or repository yet.
 To confirm which version of the Actions Runner you should expect, please view the download instructions for your enterprise, organization, or repository.
