@@ -125,18 +125,11 @@ namespace GitHub.Actions.RunService.WebApi
                         };
                     case BrokerErrorKind.HostedRunnerDeprovisioned:
                         throw new HostedRunnerDeprovisionedException(brokerError.Message);
+                    case BrokerErrorKind.RunnerSessionInvalid:
+                        throw new TaskAgentSessionExpiredException(brokerError.Message);
                     default:
                         break;
                 }
-            }
-
-            // temporary back compat
-            if (result.StatusCode == HttpStatusCode.Forbidden)
-            {
-                throw new AccessDeniedException($"{result.Error} Runner version v{runnerVersion} is deprecated and cannot receive messages.")
-                {
-                    ErrorCode = 1
-                };
             }
 
             throw new Exception($"Failed to get job message. Request to {requestUri} failed with status: {result.StatusCode}. Error message {result.Error}");
@@ -251,10 +244,10 @@ namespace GitHub.Actions.RunService.WebApi
             {
                 switch (brokerError.ErrorKind)
                 {
+                    case BrokerErrorKind.AcknowledgeJobNotFound:
+                        throw new RunnerRequestJobNotFoundException(brokerError.Message);
                     case BrokerErrorKind.RunnerNotFound:
                         throw new RunnerNotFoundException(brokerError.Message);
-                    default:
-                        break;
                 }
             }
 
